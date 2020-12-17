@@ -8,11 +8,12 @@ from PIL import Image, UnidentifiedImageError
 from time import sleep
 from typing import Generator, List, Union
 from .auth import AuthBearer
+from .enums import IFChannel, IFPostVisibility, IFReportType
 from .exceptions import APIError
 from .utils import api_request
 
 
-class _iFunnyBaseAPI:
+class _IFBaseAPI:
     """Private API class, only interacts with iFunny API endpoints"""
 
     BASE = "https://api.ifunny.mobi/v4"
@@ -33,7 +34,7 @@ class _iFunnyBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.get(iFunnyAPI.BASE + path, auth=self.auth, **kwargs)
+        r = requests.get(IFAPI.BASE + path, auth=self.auth, **kwargs)
         return r.json()
 
     @api_request
@@ -48,7 +49,7 @@ class _iFunnyBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.post(iFunnyAPI.BASE + path, auth=self.auth, **kwargs)
+        r = requests.post(IFAPI.BASE + path, auth=self.auth, **kwargs)
         return r.json()
 
     @api_request
@@ -63,7 +64,7 @@ class _iFunnyBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.put(iFunnyAPI.BASE + path, auth=self.auth, **kwargs)
+        r = requests.put(IFAPI.BASE + path, auth=self.auth, **kwargs)
         return r.json()
 
     @api_request
@@ -78,7 +79,7 @@ class _iFunnyBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.delete(iFunnyAPI.BASE + path, auth=self.auth, **kwargs)
+        r = requests.delete(IFAPI.BASE + path, auth=self.auth, **kwargs)
         return r.json()
 
     @property
@@ -92,10 +93,9 @@ class _iFunnyBaseAPI:
             JSON dictionary of iFunny account.
         """
 
-        r = self._get("/account", **kwargs)
-        return r["data"]
+        return self._get("/account", **kwargs)["data"]
 
-    def user(self, *, user_id: str, **kwargs) -> dict:
+    def user_info(self, *, user_id: str, **kwargs) -> dict:
         """Retrieve iFunny user.
 
         Args:
@@ -106,10 +106,9 @@ class _iFunnyBaseAPI:
             JSON dictionary of iFunny user.
         """
 
-        r = self._get(f"/users/{user_id}", **kwargs)
-        return r["data"]
+        return self._get(f"/users/{user_id}", **kwargs)["data"]
 
-    def post(self, *, post_id: str, **kwargs) -> dict:
+    def post_info(self, *, post_id: str, **kwargs) -> dict:
         """Retrieve iFunny post.
 
         Args:
@@ -120,8 +119,23 @@ class _iFunnyBaseAPI:
             JSON dictionary of iFunny post.
         """
 
-        r = self._get(f"/content/{post_id}", **kwargs)
-        return r["data"]
+        return self._get(f"/content/{post_id}", **kwargs)["data"]
+
+    def comment_info(self, *, post_id: str, comment_id: str, **kwargs) -> dict:
+        """Retrieve iFunny post.
+
+        Args:
+            post_id: iFunny ID of post with comment to retrieve.
+            comment_id: iFunny ID of comment to retrieve.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            JSON dictionary of iFunny comment.
+        """
+
+        return self._get(
+            f"/content/{post_id}/comments/{comment_id}", **kwargs
+        )["data"]
 
     def _get_paging_items(
             self,
@@ -154,7 +168,7 @@ class _iFunnyBaseAPI:
 
         lnone = limit is None
         ilim = 100 if lnone or limit > 100 else limit
-        batch = self._get(f"{path}?limit={ilim}", **kwargs)
+        batch = self._get(path, params={"limit": ilim}, **kwargs)
         items = get_items(batch)
 
         if not lnone and limit <= 100:
@@ -163,20 +177,25 @@ class _iFunnyBaseAPI:
         if not lnone:
             val, rem = divmod(limit - 100, 100)
 
-        nexturl = f"{path}?limit=100&next={get_next(batch)}"
         lbuffer = 0  # Significant only when limit is not None
         while has_next(batch) if lnone else lbuffer in range(val):
             lbuffer += 1
-            batch = self._get(nexturl, **kwargs)
+            batch = self._get(
+                path,
+                params={"limit": 100, "next": get_next(batch)},
+                **kwargs
+            )
             items.extend(get_items(batch))
-            nexturl = f"{path}?limit=100&next={get_next(batch)}"
 
         if lnone:
-            nexturl = f"{path}?limit=100&next={get_next(batch)}"
+            batch = self._get(
+                path,
+                params={"limit": 100, "next": get_next(batch)},
+                **kwargs
+            )
         else:
-            nexturl = f"{path}?limit={rem}"
+            batch = self._get(path, params={"limit": rem}, **kwargs)
 
-        batch = self._get(nexturl, **kwargs)
         items.extend(get_items(batch))
         return items
 
@@ -341,6 +360,31 @@ class _iFunnyBaseAPI:
             **kwargs
         )
 
+    def channel_posts(
+            self,
+            *,
+            channel: IFChannel,
+            limit: int = None,
+            **kwargs
+    ) -> List[dict]:
+        """Retrieve iFunny posts from specified channel.
+
+        Args:
+            channel: Channel of iFunny posts.
+            limit: Number of posts to retrieve.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            List of JSON dictionaries of iFunny posts from specified channel.
+        """
+
+        return self._get_paging_items(
+            f"/channels/{channel.value}/items",
+            "content",
+            limit,
+            **kwargs
+        )
+
     def tag_posts(
             self,
             *,
@@ -440,12 +484,13 @@ class _iFunnyBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/feeds/featured?limit=1", **kwargs)
+            r = self._get("/feeds/featured", params={"limit": 1}, **kwargs)
             feat = r["data"]["content"]["items"]
             feat = feat[0]
             if read:
                 self._put(
-                    f"/reads/{feat['id']}?from=feat",
+                    f"/reads/{feat['id']}",
+                    params={"from": "feat"},
                     headers={"User-Agent": "*"}
                 )
             yield feat
@@ -467,7 +512,7 @@ class _iFunnyBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._post("/feeds/collective?limit=1", **kwargs)
+            r = self._get("/feeds/collective", params={"limit": 1}, **kwargs)
             coll = r["data"]["content"]["items"]
             coll = coll[0]
             yield coll
@@ -492,12 +537,13 @@ class _iFunnyBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/timelines/home?limit=1", **kwargs)
+            r = self._get("/timelines/home", params={"limit": 1}, **kwargs)
             subscr = r["data"]["content"]["items"]
             subscr = subscr[0]
             if read:
                 self._put(
-                    f"/reads/{subscr['id']}?from=subs",
+                    f"/reads/{subscr['id']}",
+                    params={"from": "subs"},
                     headers={"User-Agent": "*"}
                 )
             yield subscr
@@ -519,7 +565,7 @@ class _iFunnyBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/feeds/popular?limit=1", **kwargs)
+            r = self._get("/feeds/popular", params={"limit": 1}, **kwargs)
             pop = r["data"]["content"]["items"]
             pop = pop[0]
             yield pop
@@ -529,7 +575,7 @@ class _iFunnyBaseAPI:
             media: Union[bytes, str],
             description: str = None,
             tags: list = None,
-            public: bool = True,
+            visibility: IFPostVisibility = IFPostVisibility.PUBLIC,
             **kwargs
     ):
         """Upload media to iFunny.
@@ -538,8 +584,7 @@ class _iFunnyBaseAPI:
             media: Either data (bytes) or file path (str) of media to upload.
             description: iFunny description of content.
             tags: List of hashtags with which to upload media.
-            public: Post visibility option. If toggled False, only subscribers
-                will be able to view the post
+            visibility: Post visibility type.
             **kwargs: Arbitrary keyword arguments passed to requests.
         """
 
@@ -557,10 +602,30 @@ class _iFunnyBaseAPI:
             data={"description": description or "",
                   "tags": json.dumps(tags or []),
                   "type": mtype,
-                  "visibility": "public" if public else "subscribers"},
+                  "visibility": visibility.value},
             files={ftype: media},
             **kwargs
         )
+
+    def subscribe(self, *, user_id: str, **kwargs):
+        """Subscribe to a user.
+
+        Args:
+            user_id: iFunny ID of user to which to subscribe.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._put(f"/users/{user_id}/subscribers", **kwargs)
+
+    def unsubscribe(self, *, user_id: str, **kwargs):
+        """Unsubscribe to a user.
+
+        Args:
+            user_id: iFunny ID of user to which to unsubscribe.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._delete(f"/users/{user_id}/subscribers", **kwargs)
 
     def block(self, *, user_id: str, blockall: bool = False, **kwargs):
         """Block a user and potentially all alternate accounts.
@@ -592,6 +657,71 @@ class _iFunnyBaseAPI:
             **kwargs
         )
 
+    def report_user(
+            self,
+            *,
+            user_id: str,
+            report_type: IFReportType,
+            **kwargs
+    ):
+        """Report a user.
+
+        Args:
+            user_id: iFunny ID of user to report.
+            report_type: iFunny report type for user report.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._put(
+            f"/users/{user_id}/abuses",
+            params={"type": report_type.value},
+            **kwargs
+        )
+
+    def report_post(
+            self,
+            *,
+            post_id: str,
+            report_type: IFReportType,
+            **kwargs
+    ):
+        """Report a post.
+
+        Args:
+            post_id: iFunny ID of post to report.
+            report_type: iFunny report type for post report.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._put(
+            f"/content/{post_id}/abuses",
+            params={"type": report_type.value},
+            **kwargs
+        )
+
+    def report_comment(
+            self,
+            *,
+            post_id: str,
+            comment_id: str,
+            report_type: IFReportType,
+            **kwargs
+    ):
+        """Report a post.
+
+        Args:
+            post_id: iFunny ID of post with comment to report.
+            comment_id: iFunny ID of comment to report.
+            report_type: iFunny report type for comment report.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._put(
+            f"/content/{post_id}/comments/{comment_id}/abuses",
+            params={"type": report_type.value},
+            **kwargs
+        )
+
     def comment(self, comment: str, *, post_id: str, **kwargs):
         """Comment on a post.
 
@@ -602,7 +732,7 @@ class _iFunnyBaseAPI:
         """
 
         self._post(
-            f"/content/{post_id}/comments?from=feat",
+            f"/content/{post_id}/comments",
             data={"text": comment},
             **kwargs
         )
@@ -631,7 +761,17 @@ class _iFunnyBaseAPI:
             **kwargs: Arbitrary keyword arguments passed to requests.
         """
 
-        self._put(f"/content/{post_id}/smiles?from=feat", **kwargs)
+        self._put(f"/content/{post_id}/smiles", **kwargs)
+
+    def remove_smile_post(self, *, post_id: str, **kwargs):
+        """Remove a smile from a post.
+
+        Args:
+            post_id: iFunny ID of post from which to remove smile.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._delete(f"/content/{post_id}/smiles", **kwargs)
 
     def unsmile_post(self, *, post_id: str, **kwargs):
         """Unsmile a post.
@@ -641,7 +781,17 @@ class _iFunnyBaseAPI:
             **kwargs: Arbitrary keyword arguments passed to requests.
         """
 
-        self._delete(f"/content/{post_id}/smiles?from=feat", **kwargs)
+        self._post(f"/content/{post_id}/unsmiles", **kwargs)
+
+    def remove_unsmile_post(self, *, post_id: str, **kwargs):
+        """Remove an unsmile from a post.
+
+        Args:
+            post_id: iFunny ID of post from which to remove unsmile.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._delete(f"/content/{post_id}/unsmiles", **kwargs)
 
     def delete_post(self, *, post_id: str, **kwargs):
         """Delete a post.
@@ -664,6 +814,20 @@ class _iFunnyBaseAPI:
 
         self._put(f"/content/{post_id}/comments/{comment_id}/smiles", **kwargs)
 
+    def remove_smile_comment(self, *, post_id: str, comment_id: str, **kwargs):
+        """Remove a smile from a comment.
+
+        Args:
+            post_id: iFunny ID of post with comment for smile removal.
+            comment_id: iFunny ID of comment from which to remove smile.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._delete(
+            f"/content/{post_id}/comments/{comment_id}/smiles",
+            **kwargs
+        )
+
     def unsmile_comment(self, *, post_id: str, comment_id: str, **kwargs):
         """Unsmile a comment.
 
@@ -673,8 +837,28 @@ class _iFunnyBaseAPI:
             **kwargs: Arbitrary keyword arguments passed to requests.
         """
 
+        self._put(
+            f"/content/{post_id}/comments/{comment_id}/unsmiles",
+            **kwargs
+        )
+
+    def remove_unsmile_comment(
+            self,
+            *,
+            post_id: str,
+            comment_id: str,
+            **kwargs
+    ):
+        """Remove an unsmile from a comment.
+
+        Args:
+            post_id: iFunny ID of post with comment for unsmile removal.
+            comment_id: iFunny ID of comment from which to remove unsmile.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
         self._delete(
-            f"/content/{post_id}/comments/{comment_id}/smiles",
+            f"/content/{post_id}/comments/{comment_id}/unsmiles",
             **kwargs
         )
 
@@ -713,8 +897,11 @@ class _iFunnyBaseAPI:
             True if nickname is valid and unregistered, otherwise False.
         """
 
-        j = self._get(f"/users/nicks_available?nick={nick}", **kwargs)
-        return j["data"]["available"]
+        return self._get(
+            "/users/nicks_available",
+            params={"nick": nick},
+            **kwargs
+        )["data"]["available"]
 
     def is_email_available(self, email: str, **kwargs) -> bool:
         """Check if email is availabale for registration.
@@ -727,11 +914,14 @@ class _iFunnyBaseAPI:
             True if email is valid and unregistered, otherwise False.
         """
 
-        j = self._get(f"/users/emails_available?email={email}", **kwargs)
-        return j["data"]["available"]
+        return self._get(
+            "/users/emails_available",
+            params={"email": email},
+            **kwargs
+        )["data"]["available"]
 
 
-class iFunnyAPI(_iFunnyBaseAPI):
+class IFAPI(_IFBaseAPI):
     """Public API class, includes extra features"""
 
     CLIENTID = "JuiUH&3822"
@@ -758,7 +948,7 @@ class iFunnyAPI(_iFunnyBaseAPI):
             requests.get(
                 "http://geoip.ifunny.co/",
                 cookies={"device_id": hexstr},
-                headers={"Cookie": f"device_id={hexstr}", "User-Agent": "*"}
+                headers={"Cookie": f"device_id={hexstr}", "User-Agent": "*"},
             )
 
         return btoken
@@ -773,7 +963,7 @@ class iFunnyAPI(_iFunnyBaseAPI):
             password: iFunny account password.
 
         Returns:
-            JSON dictionary containing iFunny bearer authorization token
+            JSON dictionary containing iFunny bearer authorization token.
         """
 
         r = requests.post(
@@ -831,7 +1021,7 @@ class iFunnyAPI(_iFunnyBaseAPI):
         """Crop the iFunny watermark from an image.
 
         Args:
-            im: Image instance with iFunny watermark.
+            im: PIL.Image instance with iFunny watermark.
 
         Returns:
             Image with bottom 20 pixels (watermark) cropped.

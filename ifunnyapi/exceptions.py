@@ -1,8 +1,8 @@
-class iFunnyAPIException(Exception):
+class IFAPIException(Exception):
     """Base ifunnyapi exception class."""
 
 
-class APIError(iFunnyAPIException):
+class APIError(IFAPIException):
     """Raised when an API request retrieves an error"""
 
     def __init__(self, status: int, desc: str):
