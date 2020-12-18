@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="ifunnyapi",
-    version="0.0.8",
+    version="0.0.9",
     author="Eamon Tracey",
     description="Interact with iFunny's API",
     long_description=long_description,

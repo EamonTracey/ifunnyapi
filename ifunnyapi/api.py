@@ -512,7 +512,7 @@ class _IFBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/feeds/collective", params={"limit": 1}, **kwargs)
+            r = self._post("/feeds/collective", params={"limit": 1}, **kwargs)
             coll = r["data"]["content"]["items"]
             coll = coll[0]
             yield coll
