@@ -122,7 +122,7 @@ class _IFBaseAPI:
         return self._get(f"/content/{post_id}", **kwargs)["data"]
 
     def comment_info(self, *, post_id: str, comment_id: str, **kwargs) -> dict:
-        """Retrieve iFunny post.
+        """Retrieve iFunny comment.
 
         Args:
             post_id: iFunny ID of post with comment to retrieve.
@@ -136,6 +136,18 @@ class _IFBaseAPI:
         return self._get(
             f"/content/{post_id}/comments/{comment_id}", **kwargs
         )["data"]
+
+    def channels_info(self, **kwargs) -> List[dict]:
+        """Retrieve iFunny channels.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            List of JSON dictionary of iFunny channels.
+        """
+
+        return self._get("/channels", **kwargs)["data"]["channels"]["items"]
 
     def _get_paging_items(
             self,
@@ -569,6 +581,31 @@ class _IFBaseAPI:
             pop = r["data"]["content"]["items"]
             pop = pop[0]
             yield pop
+
+    def digest_posts(
+            self,
+            *,
+            day: int,
+            month: int,
+            year: int,
+            **kwargs
+    ) -> List[dict]:
+        """Retrieve iFunny posts from specified digest.
+
+        Args:
+            day: Digest day.
+            month: Digest month.
+            year: Digest year.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+           List of JSON dictionaries of iFunny posts from specified digest.
+        """
+
+        return self._get(
+            f"/digests/weekly-iFunny-{year}{month:02d}{day:02d}",
+            **kwargs
+        )["data"]["items"]
 
     def upload(
             self,
