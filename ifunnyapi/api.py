@@ -1,12 +1,27 @@
+"""Unofficial wrapper for iFunny's private API
+
+Example:
+
+    from ifunnyapi.api import iFunnyAPI
+
+    api = iFunnyAPI("token")
+    for post in api.user_posts(user_id=api.account["id"]):
+        api.smile_post(post_id=post["id"])
+    for feat in api.featured(limit=1):
+        api.comment("nice feature!", post_id=feat["id"])
+"""
+
 import base64
 import hashlib
 import io
 import json
-import requests
-import uuid
-from PIL import Image, UnidentifiedImageError
 from time import sleep
 from typing import Generator, List, Union
+import uuid
+
+from PIL import Image, UnidentifiedImageError
+import requests
+
 from .auth import AuthBearer
 from .enums import IFChannel, IFPostVisibility, IFReportType
 from .exceptions import APIError
@@ -34,8 +49,8 @@ class _IFBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.get(IFAPI.BASE + path, auth=self.auth, **kwargs)
-        return r.json()
+        req = requests.get(IFAPI.BASE + path, auth=self.auth, **kwargs)
+        return req.json()
 
     @api_request
     def _post(self, path: str, **kwargs) -> dict:
@@ -49,8 +64,8 @@ class _IFBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.post(IFAPI.BASE + path, auth=self.auth, **kwargs)
-        return r.json()
+        req = requests.post(IFAPI.BASE + path, auth=self.auth, **kwargs)
+        return req.json()
 
     @api_request
     def _put(self, path: str, **kwargs) -> dict:
@@ -64,8 +79,8 @@ class _IFBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.put(IFAPI.BASE + path, auth=self.auth, **kwargs)
-        return r.json()
+        req = requests.put(IFAPI.BASE + path, auth=self.auth, **kwargs)
+        return req.json()
 
     @api_request
     def _delete(self, path: str, **kwargs) -> dict:
@@ -79,8 +94,8 @@ class _IFBaseAPI:
             JSON dictionary of request output.
         """
 
-        r = requests.delete(IFAPI.BASE + path, auth=self.auth, **kwargs)
-        return r.json()
+        req = requests.delete(IFAPI.BASE + path, auth=self.auth, **kwargs)
+        return req.json()
 
     @property
     def account(self, **kwargs) -> dict:
@@ -169,17 +184,18 @@ class _IFBaseAPI:
             List of JSON dictionaries of paging items.
         """
 
-        def get_next(r: dict) -> int:
-            return r["data"][key]["paging"]["cursors"]["next"]
+        def get_next(jso: dict) -> int:
+            return jso["data"][key]["paging"]["cursors"]["next"]
 
-        def has_next(r: dict) -> bool:
-            return r["data"][key]["paging"]["hasNext"]
+        def has_next(jso: dict) -> bool:
+            return jso["data"][key]["paging"]["hasNext"]
 
-        def get_items(r: dict) -> list:
-            return r["data"][key]["items"]
+        def get_items(jso: dict) -> list:
+            return jso["data"][key]["items"]
 
         lnone = limit is None
         ilim = 100 if lnone or limit > 100 else limit
+        val = rem = 0
         batch = self._get(path, params={"limit": ilim}, **kwargs)
         items = get_items(batch)
 
@@ -496,9 +512,8 @@ class _IFBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/feeds/featured", params={"limit": 1}, **kwargs)
-            feat = r["data"]["content"]["items"]
-            feat = feat[0]
+            jso = self._get("/feeds/featured", params={"limit": 1}, **kwargs)
+            feat = jso["data"]["content"]["items"][0]
             if read:
                 self._put(
                     f"/reads/{feat['id']}",
@@ -524,9 +539,12 @@ class _IFBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._post("/feeds/collective", params={"limit": 1}, **kwargs)
-            coll = r["data"]["content"]["items"]
-            coll = coll[0]
+            jso = self._post(
+                "/feeds/collective",
+                params={"limit": 1},
+                **kwargs
+            )
+            coll = jso["data"]["content"]["items"][0]
             yield coll
 
     def subscriptions(
@@ -549,9 +567,8 @@ class _IFBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/timelines/home", params={"limit": 1}, **kwargs)
-            subscr = r["data"]["content"]["items"]
-            subscr = subscr[0]
+            jso = self._get("/timelines/home", params={"limit": 1}, **kwargs)
+            subscr = jso["data"]["content"]["items"][0]
             if read:
                 self._put(
                     f"/reads/{subscr['id']}",
@@ -577,9 +594,8 @@ class _IFBaseAPI:
 
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            r = self._get("/feeds/popular", params={"limit": 1}, **kwargs)
-            pop = r["data"]["content"]["items"]
-            pop = pop[0]
+            jso = self._get("/feeds/popular", params={"limit": 1}, **kwargs)
+            pop = jso["data"]["content"]["items"][0]
             yield pop
 
     def digest_posts(
@@ -625,14 +641,16 @@ class _IFBaseAPI:
             **kwargs: Arbitrary keyword arguments passed to requests.
         """
 
-        media = media if type(media) is bytes else open(media, "rb").read()
+        if isinstance(media, str):
+            with open(media, "rb") as file:
+                media = file.read()
         try:
-            im = Image.open(io.BytesIO(media))
+            image = Image.open(io.BytesIO(media))
         except UnidentifiedImageError:
             mtype = "video_clip"
             ftype = "video"
         else:
-            mtype = "gif" if im.format == "GIF" else "pic"
+            mtype = "gif" if image.format == "GIF" else "pic"
             ftype = "image"
         self._post(
             "/content",
@@ -974,8 +992,7 @@ class IFAPI(_IFBaseAPI):
         Returns:
             iFunny basic token.
         """
-
-        hexstr = str(uuid.uuid4()).encode("utf-8").hex().upper()
+        hexstr = uuid.uuid4().bytes.hex().upper()
         hid = f"{hexstr}_{cls.CLIENTSEC}"
         hashdec = f"{hexstr}:{cls.CLIENTID}:{cls.CLIENTSEC}"
         hashenc = hashlib.sha1(hashdec.encode("utf-8")).hexdigest()
@@ -985,7 +1002,7 @@ class IFAPI(_IFBaseAPI):
             requests.get(
                 "http://geoip.ifunny.co/",
                 cookies={"device_id": hexstr},
-                headers={"Cookie": f"device_id={hexstr}", "User-Agent": "*"},
+                headers={"Cookie": f"device_id={hexstr}", "User-Agent": "*"}
             )
 
         return btoken
@@ -1003,14 +1020,13 @@ class IFAPI(_IFBaseAPI):
             JSON dictionary containing iFunny bearer authorization token.
         """
 
-        r = requests.post(
+        return requests.post(
             cls.BASE + "/oauth2/token",
             headers={"Authorization": "Basic " + btoken},
             data={"grant_type": "password",
                   "username": email,
                   "password": password}
-        )
-        return r.json()
+        ).json()
 
     @classmethod
     def from_creds(cls, email: str, password: str, primer: int = 10):
@@ -1028,10 +1044,10 @@ class IFAPI(_IFBaseAPI):
         btoken = cls.generate_basic_token()
         cls._req_auth(btoken, email, password)  # Prime the token
         sleep(primer)
-        r = cls._req_auth(btoken, email, password)
-        if "error" in r:
-            raise APIError(r["status"], r["error_description"])
-        token = r["access_token"]
+        jso = cls._req_auth(btoken, email, password)
+        if "error" in jso:
+            raise APIError(jso["status"], jso["error_description"])
+        token = jso["access_token"]
         return cls(token)
 
     @classmethod
@@ -1054,15 +1070,15 @@ class IFAPI(_IFBaseAPI):
         raise NotImplementedError("generate_account is not yet implemented")
 
     @staticmethod
-    def crop_ifunny_watermark(im: Image) -> Image:
+    def crop_ifunny_watermark(image: Image) -> Image:
         """Crop the iFunny watermark from an image.
 
         Args:
-            im: PIL.Image instance with iFunny watermark.
+            image: PIL.Image instance with iFunny watermark.
 
         Returns:
             Image with bottom 20 pixels (watermark) cropped.
         """
 
-        width, height = im.size
-        return im.crop((0, 0, width, height - 20))
+        width, height = image.size
+        return image.crop((0, 0, width, height - 20))

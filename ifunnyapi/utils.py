@@ -1,3 +1,5 @@
+"""Miscellaneous ifunnyapi utilities."""
+
 from functools import wraps
 from .exceptions import APIError
 
