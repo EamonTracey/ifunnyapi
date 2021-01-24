@@ -458,6 +458,58 @@ class _IFBaseAPI:
             **kwargs
         )
 
+    def post_smiles_users(
+            self,
+            *,
+            post_id: str,
+            limit: int = None,
+            **kwargs
+    ) -> List[dict]:
+        """Retrieve iFunny users that smiled specified post.
+
+        Args:
+            post_id: iFunny ID of post from which to retrieve smilers.
+            limit: Number of smilers to retrieve.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            List of JSON dictionaries of iFunny users that smiled specified
+            post.
+        """
+
+        return self._get_paging_items(
+            f"/content/{post_id}/smiles",
+            "users",
+            limit,
+            **kwargs
+        )
+
+    def post_repubs_users(
+            self,
+            *,
+            post_id: str,
+            limit: int = None,
+            **kwargs
+    ) -> List[dict]:
+        """Retrieve iFunny users that republished specified post.
+
+        Args:
+            post_id: iFunny ID of post from which to retrieve republishers.
+            limit: Number of republishers to retrieve.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            List of JSON dictionaries of iFunny users that republished
+            specified post.
+        """
+
+        return self._get_paging_items(
+            f"/content/{post_id}/republished",
+            "users",
+            limit,
+            **kwargs
+        )
+
     def comment_replies(
             self,
             *,
