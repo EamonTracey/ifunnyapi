@@ -2,29 +2,23 @@
 
 Example:
 
-    from ifunnyapi.api import iFunnyAPI
-
-    api = iFunnyAPI("token")
-    for post in api.user_posts(user_id=api.account["id"]):
-        api.smile_post(post_id=post["id"])
-    for feat in api.featured(limit=1):
-        api.comment("nice feature!", post_id=feat["id"])
+from ifunnyapi.api import IFAPI
+api = IFAPI("token")
+for post in api.user_posts(user_id=api.account["id"]):
+    api.smile_post(post_id=post["id"])
+for feat in api.featured(limit=1):
+    api.comment("nice feature!", post_id=feat["id"])
 """
 
-import base64
-import hashlib
 import io
 import json
-from time import sleep
 from typing import Generator, List, Union
-import uuid
 
 from PIL import Image, UnidentifiedImageError
 import requests
 
 from .auth import AuthBearer
 from .enums import IFChannel, IFPostVisibility, IFReportType
-from .exceptions import APIError
 from .utils import api_request
 
 
@@ -808,6 +802,46 @@ class _IFBaseAPI:
             **kwargs
         )
 
+    def pin_post(self, *, post_id: str, **kwargs):
+        """Pin a post.
+
+        Args:
+            post_id: iFunny ID of post to pin.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._post(f"/content/{post_id}/pinned", **kwargs)
+
+    def unpin_post(self, *, post_id: str, **kwargs):
+        """Unpin a post.
+
+        Args:
+            post_id: iFunny ID of post to unpin.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._delete(f"/content/{post_id}/pinned", **kwargs)
+
+    def republish_post(self, *, post_id: str, **kwargs):
+        """Republish a post.
+
+        Args:
+            post_id: iFunny ID of post to republish.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._post(f"/content/{post_id}/republished", **kwargs)
+
+    def unrepublish_post(self, *, post_id: str, **kwargs):
+        """Unrepublish a post.
+
+        Args:
+            post_id: iFunny ID of post to unrepublish.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+        """
+
+        self._delete(f"/content/{post_id}/republished", **kwargs)
+
     def smile_post(self, *, post_id: str, **kwargs):
         """Smile a post.
 
@@ -978,96 +1012,6 @@ class _IFBaseAPI:
 
 class IFAPI(_IFBaseAPI):
     """Public API class, includes extra features"""
-
-    CLIENTID = "JuiUH&3822"
-    CLIENTSEC = "HuUIC(ZQ918lkl*7"
-
-    @classmethod
-    def generate_basic_token(cls, register: bool = False) -> str:
-        """Generate an iFunny basic token.
-
-        Args:
-            register: Option to send a request to register the token.
-
-        Returns:
-            iFunny basic token.
-        """
-        hexstr = uuid.uuid4().bytes.hex().upper()
-        hid = f"{hexstr}_{cls.CLIENTSEC}"
-        hashdec = f"{hexstr}:{cls.CLIENTID}:{cls.CLIENTSEC}"
-        hashenc = hashlib.sha1(hashdec.encode("utf-8")).hexdigest()
-        btoken = base64.b64encode(bytes(f"{hid}:{hashenc}", "utf-8")).decode()
-
-        if register:
-            requests.get(
-                "http://geoip.ifunny.co/",
-                cookies={"device_id": hexstr},
-                headers={"Cookie": f"device_id={hexstr}", "User-Agent": "*"}
-            )
-
-        return btoken
-
-    @classmethod
-    def _req_auth(cls, btoken: str, email: str, password: str) -> dict:
-        """Request an iFunny bearer authorization token with credentials.
-
-        Args:
-            btoken: iFunny basic token.
-            email: iFunny account email.
-            password: iFunny account password.
-
-        Returns:
-            JSON dictionary containing iFunny bearer authorization token.
-        """
-
-        return requests.post(
-            cls.BASE + "/oauth2/token",
-            headers={"Authorization": "Basic " + btoken},
-            data={"grant_type": "password",
-                  "username": email,
-                  "password": password}
-        ).json()
-
-    @classmethod
-    def from_creds(cls, email: str, password: str, primer: int = 10):
-        """Instantiate iFunnyAPI from credentials rather than token.
-
-        Args:
-            email: iFunny account email.
-            password: iFunny account password.
-            primer: Time to sleep after primer request.
-
-        Returns:
-            iFunnyAPI instance from specified credentials.
-        """
-
-        btoken = cls.generate_basic_token()
-        cls._req_auth(btoken, email, password)  # Prime the token
-        sleep(primer)
-        jso = cls._req_auth(btoken, email, password)
-        if "error" in jso:
-            raise APIError(jso["status"], jso["error_description"])
-        token = jso["access_token"]
-        return cls(token)
-
-    @classmethod
-    def generate_account(
-            cls,
-            email: str,
-            nick: str,
-            password: str,
-            accepted_mailing: bool = False
-    ):
-        """This method is not yet implemented.
-
-        Args:
-            email:
-            nick:
-            password:
-            accepted_mailing:
-        """
-
-        raise NotImplementedError("generate_account is not yet implemented")
 
     @staticmethod
     def crop_ifunny_watermark(image: Image) -> Image:

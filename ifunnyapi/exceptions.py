@@ -6,7 +6,7 @@ class IFAPIException(Exception):
 
 
 class APIError(IFAPIException):
-    """Raised when an API request retrieves an error"""
+    """Raised when an API request retrieves an error."""
 
     def __init__(self, status: int, desc: str):
         super().__init__()
