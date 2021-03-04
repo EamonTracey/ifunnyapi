@@ -6,7 +6,6 @@ from enum import Enum
 class IFChannel(Enum):
     """iFunny channel names to channel IDs."""
 
-    CYBERPUNK = "5fd9a9533ea93f29fe1af892"
     WTF = "5e28bbc2a264f60031232af1"
     ANIMALS = "5a05c3e640fe2732008b456d"
     GAMES = "5a05c3e640fe2732008b456e"

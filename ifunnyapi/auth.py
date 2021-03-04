@@ -1,4 +1,4 @@
-"""Representations of iFunny auth tokens using requests.auth.AuthBase"""
+"""Representations of iFunny auth tokens using requests.auth.AuthBase."""
 
 from requests.auth import AuthBase
 
