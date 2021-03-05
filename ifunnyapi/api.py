@@ -450,6 +450,23 @@ class _IFBaseAPI:
 
         return self._get_paging_items(COMMENT_REPLIES.format(post_id, comment_id), "replies", limit, **kwargs)
 
+    def _get_feed(self, path: str, limit: int = None, **kwargs) -> Generator[dict, None, None]:
+        """Retrieve iFunny featured posts.
+
+        Args:
+            path: iFunny API endpoint path.
+            limit: Number of feed items to retrieve.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            Generator of JSON dictionaries of iFunny feed items.
+        """
+        iterator = iter(int, 1) if limit is None else range(limit)
+        for _ in iterator:
+            jso = self._get(path, params={"limit": 1}, **kwargs)
+            fitem = jso["data"]["content"]["items"][0]
+            yield fitem
+
     def featured(self, limit: int = None, read: bool = True, **kwargs) -> Generator[dict, None, None]:
         """Retrieve iFunny featured posts.
 
@@ -463,30 +480,10 @@ class _IFBaseAPI:
             Generator of JSON dictionaries of iFunny featured posts.
         """
 
-        iterator = iter(int, 1) if limit is None else range(limit)
-        for _ in iterator:
-            jso = self._get(FEATURED_FEED, params={"limit": 1}, **kwargs)
-            feat = jso["data"]["content"]["items"][0]
+        for feat in self._get_feed(FEATURED_FEED, limit, **kwargs):
             if read:
-                self._put(READS.format(feat["id"]), params={"from": "feat"}, headers={"User-Agent": "*"})
+                self._put(READS.format(feat["id"]), params={"from": "feat"}, headers={"User-Agent": "*"}, **kwargs)
             yield feat
-
-    def collective(self, limit: int = None, **kwargs) -> Generator[dict, None, None]:
-        """Retrieve iFunny collective posts.
-
-        Args:
-            limit: Number of collective posts to retrieve.
-            **kwargs: Arbitrary keyword arguments passed to requests.
-
-        Returns:
-            Generator of JSON dictionaries of iFunny collective posts.
-        """
-
-        iterator = iter(int, 1) if limit is None else range(limit)
-        for _ in iterator:
-            jso = self._post(COLLECTIVE_FEED, params={"limit": 1}, **kwargs)
-            coll = jso["data"]["content"]["items"][0]
-            yield coll
 
     def subscriptions(self, limit: int = None, read: bool = True, **kwargs) -> Generator[dict, None, None]:
         """Retrieve iFunny subscriptions posts.
@@ -501,13 +498,10 @@ class _IFBaseAPI:
             Generator of JSON dictionaries of iFunny subscriptions posts.
         """
 
-        iterator = iter(int, 1) if limit is None else range(limit)
-        for _ in iterator:
-            jso = self._get(SUBSCRIPTIONS_FEED, params={"limit": 1}, **kwargs)
-            subscr = jso["data"]["content"]["items"][0]
+        for feat in self._get_feed(SUBSCRIPTIONS_FEED, limit, **kwargs):
             if read:
-                self._put(READS.format(subscr["id"]), params={"from": "subs"}, headers={"User-Agent": "*"})
-            yield subscr
+                self._put(READS.format(feat["id"]), params={"from": "subs"}, headers={"User-Agent": "*"}, **kwargs)
+            yield feat
 
     def popular(self, limit: int = None, **kwargs) -> Generator[dict, None, None]:
         """Retrieve iFunny popular posts.
@@ -520,11 +514,25 @@ class _IFBaseAPI:
             Generator of JSON dictionaries of iFunny popular posts.
         """
 
+        return self._get_feed(POPULAR_FEED, limit, **kwargs)
+
+    def collective(self, limit: int = None, **kwargs) -> Generator[dict, None, None]:
+        """Retrieve iFunny collective posts.
+
+        Args:
+            limit: Number of collective posts to retrieve.
+            **kwargs: Arbitrary keyword arguments passed to requests.
+
+        Returns:
+            Generator of JSON dictionaries of iFunny collective posts.
+        """
+
         iterator = iter(int, 1) if limit is None else range(limit)
         for _ in iterator:
-            jso = self._get(POPULAR_FEED, params={"limit": 1}, **kwargs)
-            pop = jso["data"]["content"]["items"][0]
-            yield pop
+            # iFunny uses POST to retrieve collective. Why? 'Tis a mystery ...
+            jso = self._post(COLLECTIVE_FEED, params={"limit": 1}, **kwargs)
+            fitem = jso["data"]["content"]["items"][0]
+            yield fitem
 
     def digest_posts(self, *, day: int, month: int, year: int, **kwargs) -> List[dict]:
         """Retrieve iFunny posts from specified digest.
